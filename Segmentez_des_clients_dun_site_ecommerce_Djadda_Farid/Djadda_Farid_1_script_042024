@@ -1,0 +1,61 @@
+-- Sous-requête LivraisonRecente sélectionne la date de livraison la plus récente.
+WITH LivraisonRecente AS (
+    SELECT MAX(order_purchase_timestamp) AS date_livraison_recente
+    FROM orders
+)
+
+-- 1. Liste des commandes récentes de moins de 3 mois, excluant les commandes annulées, et ayant au moins 3 jours de retard :
+SELECT *
+FROM orders
+JOIN LivraisonRecente ON 1=1
+WHERE order_status <> 'canceled'
+AND order_delivered_customer_date IS NOT NULL -- Assure que la commande a été livrée
+AND order_delivered_customer_date >= date(order_estimated_delivery_date, '+3 days')
+AND order_purchase_timestamp >= date(date_livraison_recente, '-3 months'); -- Par rapport à la date de livraison la plus récente
+
+
+-- 2. Liste des vendeurs ayant généré un chiffre d'affaires de plus de 100 000 Real sur des commandes livrées via Olist :
+SELECT oi.seller_id, SUM(oi.price) AS total_revenue
+FROM order_items oi
+INNER JOIN orders o ON oi.order_id = o.order_id
+WHERE o.order_status = 'delivered'
+GROUP BY oi.seller_id
+HAVING total_revenue > 100000;
+
+
+
+-- Sous-requête LivraisonRecente sélectionne la date de livraison la plus récente.
+WITH LivraisonRecente AS (
+    SELECT MAX(order_purchase_timestamp) AS date_livraison_recente
+    FROM orders
+),
+Jointure_order AS (
+    SELECT oi.seller_id, oi.order_id, o.order_purchase_timestamp
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.order_id
+    WHERE o.order_status = 'delivered'
+)
+
+-- 3. Liste des nouveaux vendeurs (moins de 3 mois d'ancienneté) ayant déjà vendu plus de 30 produits :
+SELECT seller_id, COUNT(order_id) AS total_products_sold
+FROM Jointure_order
+JOIN LivraisonRecente ON 1=1
+GROUP BY seller_id
+HAVING MIN(order_purchase_timestamp) > date(date_livraison_recente, '-3 months')
+AND total_products_sold > 30;
+
+
+-- 4. Les 5 codes postaux enregistrant plus de 30 commandes avec le pire score moyen sur les 12 derniers mois :
+SELECT c.customer_zip_code_prefix AS customer_zip_code_prefix, AVG(r.review_score) AS avg_score, COUNT(o.order_id) AS total_orders
+FROM orders o
+JOIN LivraisonRecente ON 1=1
+JOIN order_reviews r ON o.order_id = r.order_id
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_purchase_timestamp >= date(date_livraison_recente, '-12 months')
+GROUP BY customer_zip_code_prefix
+HAVING total_orders > 30
+ORDER BY avg_score ASC
+LIMIT 5;
+
+
+
